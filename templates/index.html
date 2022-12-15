@@ -2,15 +2,144 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>PID</title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PID simulation</title>
+    <style>
+        .row{
+            display: flex;
+            flex-direction: row;
+            justify-content: center;
+            align-items: flex-end;
+            margin: 40px auto;
+        }
+        .col-3{
+            width: calc(100% / 5);
+        }
+
+        label{
+            display: block;
+            margin-bottom: 5px;
+            /* nice label */
+            font-size: 1.2rem;
+            font-weight: 600;
+
+        }
+        #myChart{
+            width: 900px;
+            height: 500px;
+            margin: 10px auto;
+        }
+        input{
+            width: 80%;
+            /* nice input */
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            font-size: 1.2rem;
+        }
+        #button:hover{
+        cursor:pointer;
+        }
+    </style>
 </head>
 <body>
-<header><h1>PID controller</h1></header>
-<div>
-  <form method="post" action="/start">
-      <button>Run</button>
-  </form>
-</div>
+        <form class="row" action="/start" method="post">
+            <!-- name -->
+            <div class="col-3">
+                <label for="name">kp</label>
+                <input type="range" min="0" max="1" step="0.1" value="0.5" name="kc" id="kc">
+            </div>
+            <!-- name -->
+            <div class="col-3">
+                <label for="name">ki</label>
+                <input type="range" min="0" max="5" step="0.1" value="2.5" name="taul" id="taul">
+            </div>
+            <!-- name -->
+            <div class="col-3">
+                <label for="name">kd</label>
+                <input type="range" min="0" max="1" step="0.1" value="0.5" name="taud" id="taud">
+            </div>
+            <!-- submit -->
+            <div class="col-3">
+                <input id="button" type="submit" value="Submit">
+            </div>
+        </form>
+        <div>
+            <canvas id="myChart">
+            </canvas>
+        </div>
+      
+      <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+      <script>
 
+        const tArray = myFunc({{t|tojson}});
+        const spArray = myFunc({{sp|tojson}})
+        const pvArray = myFunc({{pv|tojson}})
+        console.log(tArray,spArray,pvArray);
+        draw(tArray,spArray,pvArray);
+        function draw(tArray,spArray,pvArray){
+            const ctx = document.getElementById('myChart');
+            var chart = new Chart(ctx, {
+            type: "line",
+            data: {
+                labels: tArray,
+                datasets: [
+                {
+                    label: 'PV',
+                    backgroundColor: "rgb(255, 99, 132, 0.5)",
+                    borderColor: "rgb(255, 99, 132)",
+                    borderWidth: 1,
+                    data: pvArray.slice(0, 1),
+                },
+                {
+                    label: 'SP',
+                    backgroundColor: "rgb(255, 99, 52, 0.5)",
+                    borderColor: "rgb(255, 99, 52)",
+                    borderWidth: 1,
+                    data: spArray.slice(0,1),
+                },
+                ]
+            },
+            options: {
+                animation: {
+                x: {
+                    duration: 5000,
+                    from: 0
+                },
+                y: {
+                    duration: 3000,
+                    from: 500
+                }
+                }
+            }
+        });
+        setChart(chart,spArray,pvArray);
+        }
+        // random data in array 150 item {x: 0, y: 0}
+        // const data = [];
+
+        function addData(chart, data, datasetLabel) {
+            // chart.data.labels.push(label);
+            chart.data.datasets.forEach((dataset) => {
+                if(dataset.label == datasetLabel){
+                    dataset.data.push(data);
+                }
+            });
+            chart.update('none');
+        }
+        function setChart(myChart, ps,pv){
+            for (let i = 0; i < ps.length; i++) {
+                setTimeout(() => {
+                    addData(myChart, ps[i], 'SP');
+                    addData(myChart, pv[i], 'PV');
+                }, 50 * i);
+            }
+        }
+        function myFunc(vars) {
+            return vars
+        }
+      </script>
+       
 </body>
 </html>

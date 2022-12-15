@@ -1,90 +1,72 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib
 from scipy.integrate import odeint
-matplotlib.use('Agg')
-# plt.switch_backend('agg')
-# animate plots?
+# process model
+Kp = 3.0
+taup = 5.0
+def process(y,t,u,Kp,taup):
+    # Kp = process gain
+    # taup = process time constant
+    dydt = -y/taup + Kp/taup * u
+    return dydt
 
+def pid_process(Kci,tauIi,tauDi):
+    # specify number of steps
+    ns = 300
+    # define time points
+    t = np.linspace(0,ns/10,ns+1)
+    delta_t = t[1]-t[0]
 
-# define model
-def vehicle(v,t,u,load):
-    # inputs
-    #  v    = vehicle velocity (m/s)
-    #  t    = time (sec)
-    #  u    = gas pedal position (-50% to 100%)
-    #  load = passenger load + cargo (kg)
-    Cd = 0.24    # drag coefficient
-    rho = 1.225  # air density (kg/m^3)
-    A = 5.0      # cross-sectional area (m^2)
-    Fp = 30      # thrust parameter (N/%pedal)
-    m = 500      # vehicle mass (kg)
-    # calculate derivative of the velocity
-    dv_dt = (1.0/(m+load)) * (Fp*u - 0.5*rho*Cd*A*v**2)
-    return dv_dt
+    # storage for recording values
+    op = np.zeros(ns+1)  # controller output
+    pv = np.zeros(ns+1)  # process variable
+    e = np.zeros(ns+1)   # error
+    ie = np.zeros(ns+1)  # integral of the error
+    dpv = np.zeros(ns+1) # derivative of the pv
+    P = np.zeros(ns+1)   # proportional
+    I = np.zeros(ns+1)   # integral
+    D = np.zeros(ns+1)   # derivative
+    sp = np.zeros(ns+1)  # set point
+    sp[25:] = 10
 
-def pid_run():
-    # v0,load,sp
-    animate=True
-    tf = 60.0                 # final time for simulation
-    nsteps = 61               # number of time steps
-    delta_t = tf/(nsteps-1)   # how long is each time step?
-    ts = np.linspace(0,tf,nsteps) # linearly spaced time vector
+    # PID (starting point)
+    Kc = Kci
+    tauI = tauIi
+    tauD = tauDi
 
-    # simulate step test operation
-    step = np.zeros(nsteps) # u = valve % open
-    step[11:] = 50.0       # step up pedal position
-    # passenger(s) + cargo load
-    load = 200.0 # kg
-    # velocity initial condition
-    v0 = 10.0
-    # set point
-    sp = 25.0
-    # for storing the results
-    vs = np.zeros(nsteps)
-    sps = np.zeros(nsteps)
+    # PID (tuning)
+    Kc = Kc * 2
+    tauI = tauI / 2
+    tauD = 1.0
 
-    # simulate with ODEINT
-    for i in range(nsteps-1):
-        u = step[i]
-        # clip inputs to -50% to 100%
-        if u >= 100.0:
-            u = 100.0
-        if u <= -50.0:
-            u = -50.0
-        v = odeint(vehicle,v0,[0,delta_t],args=(u,load))
-        v0 = v[-1]   # take the last value
-        vs[i+1] = v0 # store the velocity for plotting
-        sps[i+1] = sp
+    # Upper and Lower limits on OP
+    op_hi = 10.0
+    op_lo = 0.0
 
-        # plot results
-        if animate:
-            plt.clf()
-            plt.subplot(2,1,1)
-            plt.plot(ts[0:i+1],vs[0:i+1],'b-',linewidth=3)
-            plt.plot(ts[0:i+1],sps[0:i+1],'k--',linewidth=2)
-            plt.ylabel('Velocity (m/s)')
-            plt.legend(['Velocity','Set Point'],loc=2)
-            plt.subplot(2,1,2)
-            plt.plot(ts[0:i+1],step[0:i+1],'r--',linewidth=3)
-            plt.ylabel('Gas Pedal')
-            plt.legend(['Gas Pedal (%)'])
-            plt.xlabel('Time (sec)')
-            plt.savefig(f"static/images/fig{i+1}.png")
-
-
-    if not animate:
-        # plot results
-        plt.subplot(2,1,1)
-        plt.plot(ts,vs,'b-',linewidth=3)
-        plt.plot(ts,sps,'k--',linewidth=2)
-        plt.ylabel('Velocity (m/s)')
-        plt.legend(['Velocity','Set Point'],loc=2)
-        plt.subplot(2,1,2)
-        plt.plot(ts,step,'r--',linewidth=3)
-        plt.ylabel('Gas Pedal')
-        plt.legend(['Gas Pedal (%)'])
-        plt.xlabel('Time (sec)')
-        plt.savefig(f"static/images/fig{i+1}.png")
-
-
+    # loop through time steps
+    for i in range(0,ns):
+        e[i] = sp[i] - pv[i]
+        if i >= 1:  # calculate starting on second cycle
+            dpv[i] = (pv[i]-pv[i-1])/delta_t
+            ie[i] = ie[i-1] + e[i] * delta_t
+        P[i] = Kc * e[i]
+        I[i] = Kc/tauI * ie[i]
+        D[i] = - Kc * tauD * dpv[i]
+        op[i] = op[0] + P[i] + I[i] + D[i]
+        if op[i] > op_hi:  # check upper limit
+            op[i] = op_hi
+            ie[i] = ie[i] - e[i] * delta_t # anti-reset windup
+        if op[i] < op_lo:  # check lower limit
+            op[i] = op_lo
+            ie[i] = ie[i] - e[i] * delta_t # anti-reset windup
+        y = odeint(process,pv[i],[0,delta_t],args=(op[i],Kp,taup))
+        pv[i+1] = y[-1]
+    op[ns] = op[ns-1]
+    ie[ns] = ie[ns-1]
+    P[ns] = P[ns-1]
+    I[ns] = I[ns-1]
+    D[ns] = D[ns-1]
+    t=np.round(t,2)
+    t=t.tolist()
+    sp=sp.tolist()
+    pv=pv.tolist()
+    return t,sp,pv
